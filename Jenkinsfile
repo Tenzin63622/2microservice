@@ -1,34 +1,15 @@
 pipeline {
     agent any
 
-    environment {
-        JAVA_HOME = "D:\\Freshers_Software\\jdk-21.0.11"
-        MAVEN_HOME = "D:\\Freshers_Software\\Softwarepath\\apache-maven-3.8.5"
-        PATH = "${env.JAVA_HOME}\\bin;${env.MAVEN_HOME}\\bin;${env.PATH}"
-    }
-
     stages {
 
-        stage('Checkout') {
+        stage('Checkout Code') {
             steps {
-                echo "=== Cloning Repository ==="
                 checkout scm
             }
         }
 
-        stage('Verify Tools') {
-            steps {
-                bat '''
-                echo Checking Java...
-                java -version
-
-                echo Checking Maven...
-                mvn -version
-                '''
-            }
-        }
-
-        stage('Build All Services') {
+        stage('Build All Microservices') {
             steps {
                 script {
                     def services = [
@@ -44,7 +25,7 @@ pipeline {
 
                     for (service in services) {
                         dir(service) {
-                            echo "=== Building ${service} ==="
+                            echo "Building ${service}"
                             bat "mvn clean package -DskipTests"
                         }
                     }
@@ -52,68 +33,50 @@ pipeline {
             }
         }
 
-        stage('Start Services') {
+        stage('Run Follow Service + API Test') {
             steps {
                 script {
-                    echo "=== Starting Microservices ==="
 
-                    bat '''
-                    @echo off
+                    dir("follow-service") {
 
-                    REM Kill old java processes (optional cleanup)
-                    taskkill /F /IM java.exe /T >nul 2>&1
+                        echo "Starting follow-service in background..."
 
-                    REM Start services in background using start command
-                    start "eureka" java -jar eureka-server\\target\\*.jar
-                    timeout /t 20
+                        // Start Spring Boot in background
+                        bat """
+                        start "follow-service" /B java -jar target\\follow-service-0.0.1-SNAPSHOT.jar > follow.log
+                        """
 
-                    start "user" java -jar user-service\\target\\*.jar
-                    start "post" java -jar post-service\\target\\*.jar
-                    start "like" java -jar like-service\\target\\*.jar
-                    start "comment" java -jar comment-service\\target\\*.jar
-                    start "follow" java -jar follow-service\\target\\*.jar
-                    start "search" java -jar search-service\\target\\*.jar
+                        echo "Waiting for service to start..."
+                        bat "timeout 20"
 
-                    timeout /t 15
+                        echo "Hitting API endpoint..."
 
-                    start "gateway" java -jar api-gateway\\target\\*.jar
-                    '''
+                        // CALL YOUR API
+                        bat """
+                        curl http://localhost:8085/api/follows/1/followers
+                        """
+
+                        echo "Stopping follow-service..."
+
+                        // Kill process using port 8085
+                        bat """
+                        for /f "tokens=5" %%a in ('netstat -ano ^| findstr :8085') do taskkill /F /PID %%a
+                        """
+                    }
                 }
-            }
-        }
-
-        stage('Health Check') {
-            steps {
-                script {
-                    echo "=== Health Check ==="
-
-                    bat '''
-                    echo Waiting for services...
-                    timeout /t 30
-
-                    curl http://localhost:8761 || echo Eureka not ready
-                    '''
-                }
-            }
-        }
-
-        stage('API Test') {
-            steps {
-                bat '''
-                echo === Testing Follow Service ===
-                curl http://localhost:8085/api/follows/1/followers || echo API not ready
-                '''
             }
         }
     }
 
     post {
         success {
-            echo "PIPELINE SUCCESS 🎉"
+            echo "✅ Pipeline SUCCESS - API tested successfully"
         }
-
         failure {
-            echo "PIPELINE FAILED ❌ CHECK LOGS (JAVA / PORT / SERVICE START ISSUE)"
+            echo "❌ Pipeline FAILED"
+        }
+        always {
+            echo "Pipeline finished"
         }
     }
 }
