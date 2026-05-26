@@ -104,6 +104,13 @@ pipeline {
                 '''
             }
         }
+
+        stage('Open API in Browser') {
+            steps {
+                echo "Opening API in browser..."
+                bat 'start "" http://localhost:8085/api/follows/1/followers'
+            }
+        }
     }
 
     post {
