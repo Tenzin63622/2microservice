@@ -9,12 +9,15 @@ pipeline {
 
         stage('Checkout') {
             steps {
+                echo "=== Checkout Code ==="
                 checkout scm
             }
         }
 
         stage('Build All Services') {
             steps {
+                echo "=== Building Microservices ==="
+
                 script {
                     def services = [
                         "eureka-server",
@@ -36,30 +39,70 @@ pipeline {
             }
         }
 
+        /*
+        OPTIONAL: START SERVICES (NOT RECOMMENDED IN REAL CI/CD)
+        */
+
         stage('Start Services') {
             steps {
                 bat """
-                    for /f %%i in ('dir /b eureka-server\\target\\*.jar') do start java -jar eureka-server\\target\\%%i
-                    timeout /t 20 >nul
+                    echo Starting Eureka Server...
+                    start java -jar eureka-server\\target\\*.jar
 
-                    for /f %%i in ('dir /b user-service\\target\\*.jar') do start java -jar user-service\\target\\%%i
-                    for /f %%i in ('dir /b post-service\\target\\*.jar') do start java -jar post-service\\target\\%%i
-                    for /f %%i in ('dir /b like-service\\target\\*.jar') do start java -jar like-service\\target\\%%i
-                    for /f %%i in ('dir /b comment-service\\target\\*.jar') do start java -jar comment-service\\target\\%%i
-                    for /f %%i in ('dir /b follow-service\\target\\*.jar') do start java -jar follow-service\\target\\%%i
-                    for /f %%i in ('dir /b search-service\\target\\*.jar') do start java -jar search-service\\target\\%%i
+                    echo Starting User Service...
+                    start java -jar user-service\\target\\*.jar
 
-                    timeout /t 15 >nul
+                    echo Starting Post Service...
+                    start java -jar post-service\\target\\*.jar
 
-                    for /f %%i in ('dir /b api-gateway\\target\\*.jar') do start java -jar api-gateway\\target\\%%i
+                    echo Starting Like Service...
+                    start java -jar like-service\\target\\*.jar
+
+                    echo Starting Comment Service...
+                    start java -jar comment-service\\target\\*.jar
+
+                    echo Starting Follow Service...
+                    start java -jar follow-service\\target\\*.jar
+
+                    echo Starting Search Service...
+                    start java -jar search-service\\target\\*.jar
+
+                    echo Starting API Gateway...
+                    start java -jar api-gateway\\target\\*.jar
                 """
+
+                // FIXED: Windows safe sleep (no timeout /t)
+                powershell "Start-Sleep -Seconds 25"
             }
         }
 
         stage('Health Check') {
             steps {
-                bat "curl http://localhost:8761 || echo Eureka not ready"
+                // safer retry-based health check
+                powershell """
+                    for ($i = 0; $i -lt 10; $i++) {
+                        try {
+                            Invoke-WebRequest http://localhost:8761 -UseBasicParsing
+                            Write-Host "Eureka is UP"
+                            exit 0
+                        } catch {
+                            Write-Host "Waiting for Eureka..."
+                            Start-Sleep -Seconds 5
+                        }
+                    }
+                    exit 1
+                """
             }
+        }
+    }
+
+    post {
+        success {
+            echo "PIPELINE SUCCESS"
+        }
+
+        failure {
+            echo "PIPELINE FAILED - CHECK LOGS / JAVA_HOME / SERVICES"
         }
     }
 }
