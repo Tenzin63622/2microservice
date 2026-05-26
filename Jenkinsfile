@@ -115,19 +115,34 @@ pipeline {
     agent any
 
     environment {
-        SERVICES = 'eureka-server user-service post-service like-service comment-service follow-service search-service notification-service api-gateway'
+
+        SERVICES = 'eureka-server user-service post-service like-service comment-service follow-service search-service api-gateway'
     }
 
     stages {
 
-        stage('Checkout Code') {
+        stage('Clean Workspace') {
+
             steps {
+
+                echo '=== Cleaning Old Workspace ==='
+
+                cleanWs()
+            }
+        }
+
+        stage('Checkout Code') {
+
+            steps {
+
                 echo '=== Fetching latest code from GitHub ==='
+
                 checkout scm
             }
         }
 
         stage('Build Microservices') {
+
             steps {
 
                 echo '=== Building all Spring Boot microservices ==='
@@ -150,6 +165,7 @@ pipeline {
         }
 
         stage('Run Unit Tests') {
+
             steps {
 
                 echo '=== Running Unit Tests ==='
@@ -160,6 +176,8 @@ pipeline {
 
                     for (service in serviceList) {
 
+                        echo "Testing ${service}"
+
                         dir(service) {
 
                             bat 'mvn test'
@@ -169,13 +187,16 @@ pipeline {
             }
 
             post {
+
                 always {
+
                     junit '**/target/surefire-reports/*.xml'
                 }
             }
         }
 
         stage('Stop Old Services') {
+
             steps {
 
                 echo '=== Stopping old running services ==='
@@ -187,12 +208,15 @@ pipeline {
         }
 
         stage('Deploy Services') {
+
             steps {
 
                 echo '=== Starting all microservices ==='
 
                 bat '''
+
                     start /B java -jar eureka-server\\target\\*.jar
+
                     timeout /t 20
 
                     start /B java -jar user-service\\target\\*.jar
@@ -201,20 +225,26 @@ pipeline {
                     start /B java -jar comment-service\\target\\*.jar
                     start /B java -jar follow-service\\target\\*.jar
                     start /B java -jar search-service\\target\\*.jar
+
+                    timeout /t 15
+
                     start /B java -jar api-gateway\\target\\*.jar
                 '''
             }
         }
 
         stage('Health Check') {
+
             steps {
 
                 echo '=== Performing Health Checks ==='
 
                 bat '''
+
                     timeout /t 40
 
                     curl http://localhost:8761/actuator/health
+
                     curl http://localhost:9090/actuator/health
                 '''
             }
