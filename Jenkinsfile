@@ -1,6 +1,11 @@
 pipeline {
     agent any
 
+    environment {
+        FOLLOW_PORT = "8085"
+        FOLLOW_URL = "http://localhost:8085/api/follows/1/followers"
+    }
+
     stages {
 
         stage('Checkout Code') {
@@ -12,6 +17,7 @@ pipeline {
         stage('Build All Microservices') {
             steps {
                 script {
+
                     def services = [
                         "eureka-server",
                         "user-service",
@@ -33,36 +39,45 @@ pipeline {
             }
         }
 
-        stage('Run Follow Service + API Test') {
+        stage('Run Follow Service') {
             steps {
                 script {
-
                     dir("follow-service") {
 
-                        echo "Starting follow-service in background..."
+                        echo "Starting follow-service..."
 
-                        // Start Spring Boot in background
                         bat """
-                        start "follow-service" /B java -jar target\\follow-service-0.0.1-SNAPSHOT.jar > follow.log
+                        if exist follow.log del follow.log
+                        start "follow-service" java -jar target\\follow-service-0.0.1-SNAPSHOT.jar > follow.log
                         """
 
-                        echo "Waiting for service to start..."
-                        bat "timeout 20"
+                        echo "Waiting for follow-service to start..."
 
-                        echo "Hitting API endpoint..."
-
-                        // CALL YOUR API
-                        bat """
-                        curl http://localhost:8085/api/follows/1/followers
-                        """
-
-                        echo "Stopping follow-service..."
-
-                        // Kill process using port 8085
-                        bat """
-                        for /f "tokens=5" %%a in ('netstat -ano ^| findstr :8085') do taskkill /F /PID %%a
+                        powershell """
+                        Start-Sleep -Seconds 25
                         """
                     }
+                }
+            }
+        }
+
+        stage('Test Follow API') {
+            steps {
+                script {
+                    echo "Testing endpoint: ${FOLLOW_URL}"
+
+                    powershell """
+                    try {
+                        \$response = Invoke-RestMethod -Uri "${FOLLOW_URL}" -Method GET
+                        Write-Output "API RESPONSE:"
+                        Write-Output \$response
+                    }
+                    catch {
+                        Write-Output "❌ API TEST FAILED"
+                        Write-Output \$_
+                        exit 1
+                    }
+                    """
                 }
             }
         }
@@ -70,13 +85,11 @@ pipeline {
 
     post {
         success {
-            echo "✅ Pipeline SUCCESS - API tested successfully"
+            echo "✅ Pipeline SUCCESS - All services built and follow API works"
         }
+
         failure {
-            echo "❌ Pipeline FAILED"
-        }
-        always {
-            echo "Pipeline finished"
+            echo "❌ Pipeline FAILED - Check logs"
         }
     }
 }
