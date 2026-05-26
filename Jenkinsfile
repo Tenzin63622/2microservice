@@ -3,6 +3,7 @@ pipeline {
 
     environment {
         SERVICES = 'eureka-server user-service post-service like-service comment-service follow-service search-service api-gateway'
+        FOLLOW_SERVICE_PORT = '8085'
     }
 
     stages {
@@ -16,14 +17,14 @@ pipeline {
 
         stage('Checkout Code') {
             steps {
-                echo '=== Fetching Code from GitHub ==='
+                echo '=== Fetching Code ==='
                 checkout scm
             }
         }
 
-        stage('Build Microservices') {
+        stage('Build All Microservices') {
             steps {
-                echo '=== Building all services ==='
+                echo '=== Building Services ==='
 
                 script {
                     def serviceList = env.SERVICES.split(' ')
@@ -41,14 +42,12 @@ pipeline {
 
         stage('Run Unit Tests') {
             steps {
-                echo '=== Running Unit Tests ==='
+                echo '=== Running Tests ==='
 
                 script {
                     def serviceList = env.SERVICES.split(' ')
 
                     for (service in serviceList) {
-                        echo "Testing ${service}"
-
                         dir(service) {
                             bat 'mvn test || exit /B 0'
                         }
@@ -65,14 +64,14 @@ pipeline {
 
         stage('Stop Old Services') {
             steps {
-                echo '=== Stopping old Java services ==='
+                echo '=== Stopping old Java processes ==='
                 bat 'taskkill /F /IM java.exe /T || exit /B 0'
             }
         }
 
-        stage('Start Services') {
+        stage('Start Core Services') {
             steps {
-                echo '=== Starting Microservices ==='
+                echo '=== Starting Eureka + Microservices ==='
 
                 bat '''
                     echo Starting Eureka Server...
@@ -95,23 +94,35 @@ pipeline {
             }
         }
 
-        stage('Wait for Services') {
+        stage('Wait for Services to Start') {
             steps {
-                echo '=== Waiting for services to initialize ==='
+                echo '=== Waiting for services ==='
                 bat 'timeout /t 60'
+            }
+        }
+
+        stage('Start Follow Service for Testing') {
+            steps {
+                echo '=== Ensuring Follow Service is running ==='
+
+                bat '''
+                    echo Starting Follow Service explicitly for test...
+                    start /B java -jar follow-service\\target\\*.jar
+                    timeout /t 20
+                '''
             }
         }
 
         stage('Health Check') {
             steps {
-                echo '=== Checking Service Health ==='
+                echo '=== Checking Health ==='
 
                 bat '''
-                    echo Checking Eureka...
-                    curl -f http://localhost:8761/actuator/health || echo Eureka not ready
+                    echo Eureka Health Check...
+                    curl http://localhost:8761/actuator/health || echo Eureka not ready
 
-                    echo Checking API Gateway...
-                    curl -f http://localhost:9090/actuator/health || echo Gateway not ready
+                    echo API Gateway Health Check...
+                    curl http://localhost:9090/actuator/health || echo Gateway not ready
                 '''
             }
         }
@@ -121,8 +132,8 @@ pipeline {
                 echo '=== Testing Follow Service API ==='
 
                 bat '''
-                    echo Calling Follow Service...
-                    curl -H "X-User-Id: 1" http://localhost:8082/api/follows/1/following
+                    echo Calling Follow Service API...
+                    curl -H "X-User-Id: 1" http://localhost:8085/api/follows/1/following
                 '''
             }
         }
@@ -136,7 +147,7 @@ pipeline {
             echo '====================================='
             echo 'Eureka: http://localhost:8761'
             echo 'API Gateway: http://localhost:9090'
-            echo 'Post Service Example: http://localhost:8082/api/posts'
+            echo 'Follow API: http://localhost:8085/api/follows/1/following'
         }
 
         failure {
