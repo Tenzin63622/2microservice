@@ -2,34 +2,37 @@ pipeline {
     agent any
 
     environment {
-        SERVICES = 'eureka-server user-service post-service like-service comment-service follow-service search-service api-gateway'
-        FOLLOW_URL = 'http://localhost:8085/api/follows/1/following'
+        GATEWAY_URL = "http://localhost:8082/api/follows/1/following"
     }
 
     stages {
 
-        stage('Clean Workspace') {
+        stage('Checkout') {
             steps {
-                echo '=== Cleaning Workspace ==='
-                cleanWs()
-            }
-        }
-
-        stage('Checkout Code') {
-            steps {
-                echo '=== Checkout Code ==='
+                echo "=== Checkout Code ==="
                 checkout scm
             }
         }
 
         stage('Build All Services') {
             steps {
-                echo '=== Building Microservices ==='
+                echo "=== Building Microservices ==="
                 script {
-                    def serviceList = env.SERVICES.split(' ')
-                    for (service in serviceList) {
+
+                    def services = [
+                        "eureka-server",
+                        "user-service",
+                        "post-service",
+                        "like-service",
+                        "comment-service",
+                        "follow-service",
+                        "search-service",
+                        "api-gateway"
+                    ]
+
+                    for (service in services) {
                         dir(service) {
-                            bat 'mvn clean package -DskipTests'
+                            bat "mvn clean package -DskipTests"
                         }
                     }
                 }
@@ -38,74 +41,60 @@ pipeline {
 
         stage('Start Services') {
             steps {
-                echo '=== Starting Services ==='
+                echo "=== Starting Services ==="
 
                 bat '''
-                    echo Starting Eureka Server...
-                    start /B java -jar eureka-server\\target\\*.jar
-                    timeout /t 25
+                echo Starting Eureka Server...
+                for /f %%i in ('dir /b eureka-server\\target\\*.jar') do start /B java -jar eureka-server\\target\\%%i
 
-                    echo Starting Microservices...
-                    start /B java -jar user-service\\target\\*.jar
-                    start /B java -jar post-service\\target\\*.jar
-                    start /B java -jar like-service\\target\\*.jar
-                    start /B java -jar comment-service\\target\\*.jar
-                    start /B java -jar follow-service\\target\\*.jar
-                    start /B java -jar search-service\\target\\*.jar
+                timeout /t 25
 
-                    timeout /t 20
+                echo Starting Microservices...
+                for /f %%i in ('dir /b user-service\\target\\*.jar') do start /B java -jar user-service\\target\\%%i
+                for /f %%i in ('dir /b post-service\\target\\*.jar') do start /B java -jar post-service\\target\\%%i
+                for /f %%i in ('dir /b like-service\\target\\*.jar') do start /B java -jar like-service\\target\\%%i
+                for /f %%i in ('dir /b comment-service\\target\\*.jar') do start /B java -jar comment-service\\target\\%%i
+                for /f %%i in ('dir /b follow-service\\target\\*.jar') do start /B java -jar follow-service\\target\\%%i
+                for /f %%i in ('dir /b search-service\\target\\*.jar') do start /B java -jar search-service\\target\\%%i
 
-                    echo Starting API Gateway...
-                    start /B java -jar api-gateway\\target\\*.jar
+                timeout /t 20
+
+                echo Starting API Gateway...
+                for /f %%i in ('dir /b api-gateway\\target\\*.jar') do start /B java -jar api-gateway\\target\\%%i
                 '''
             }
         }
 
         stage('Wait for Startup') {
             steps {
-                echo '=== Waiting for services to register in Eureka ==='
-                bat 'timeout /t 60'
+                echo "Waiting for services to stabilize..."
+                bat "timeout /t 30"
             }
         }
 
-        stage('Test Follow API via Gateway') {
+        stage('Test Follow API') {
             steps {
-                echo '=== Testing API ==='
-
-                bat '''
-                    echo Calling Follow API...
-
-                    curl %FOLLOW_URL%
-
-                    if %errorlevel% neq 0 (
-                        echo API CALL FAILED
-                        exit /b 1
-                    )
-                '''
-            }
-        }
-
-        stage('Stop Services') {
-            steps {
-                echo '=== Stopping Java Services ==='
-                bat 'taskkill /F /IM java.exe /T || exit /B 0'
+                echo "=== Testing API ==="
+                bat """
+                curl -i ${GATEWAY_URL}
+                """
             }
         }
     }
 
     post {
         success {
-            echo '====================================='
-            echo 'PIPELINE SUCCESS'
-            echo "API WORKED: http://localhost:8085/api/follows/1/following"
-            echo '====================================='
+            echo "====================================="
+            echo "PIPELINE SUCCESS"
+            echo "FOLLOW API TEST COMPLETED"
+            echo "====================================="
         }
 
         failure {
-            echo '====================================='
-            echo 'PIPELINE FAILED'
-            echo 'CHECK LOGS'
-            echo '====================================='
+            echo "====================================="
+            echo "PIPELINE FAILED"
+            echo "CHECK LOGS"
+            echo "====================================="
         }
     }
 }
