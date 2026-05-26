@@ -1,9 +1,8 @@
 pipeline {
     agent any
 
-    environment {
-        JAVA_HOME = "C:\\Program Files\\Java\\jdk-17"
-        PATH = "${env.JAVA_HOME}\\bin;${env.PATH}"
+    tools {
+        jdk 'jdk-21'
     }
 
     stages {
@@ -42,63 +41,50 @@ pipeline {
 
         stage('Start Services') {
             steps {
-                echo "=== Starting Services ==="
-
                 bat """
                     echo Starting Eureka Server...
-                    start /B java -jar eureka-server\\target\\eureka-server-*.jar
+                    start /B java -jar eureka-server\\target\\*.jar
 
                     echo Starting User Service...
-                    start /B java -jar user-service\\target\\user-service-*.jar
+                    start /B java -jar user-service\\target\\*.jar
 
                     echo Starting Post Service...
-                    start /B java -jar post-service\\target\\post-service-*.jar
+                    start /B java -jar post-service\\target\\*.jar
 
                     echo Starting Like Service...
-                    start /B java -jar like-service\\target\\like-service-*.jar
+                    start /B java -jar like-service\\target\\*.jar
 
                     echo Starting Comment Service...
-                    start /B java -jar comment-service\\target\\comment-service-*.jar
+                    start /B java -jar comment-service\\target\\*.jar
 
                     echo Starting Follow Service...
-                    start /B java -jar follow-service\\target\\follow-service-*.jar
+                    start /B java -jar follow-service\\target\\*.jar
 
                     echo Starting Search Service...
-                    start /B java -jar search-service\\target\\search-service-*.jar
+                    start /B java -jar search-service\\target\\*.jar
 
                     echo Starting API Gateway...
-                    start /B java -jar api-gateway\\target\\api-gateway-*.jar
+                    start /B java -jar api-gateway\\target\\*.jar
                 """
 
-                // FIX: Replace timeout with PowerShell (Windows safe)
-                powershell """
-                    Start-Sleep -Seconds 25
-                """
+                powershell "Start-Sleep -Seconds 25"
             }
         }
 
         stage('Health Check') {
             steps {
-                echo "=== Basic Health Check ==="
-                bat """
-                    curl http://localhost:8761 || echo Eureka not ready yet
-                """
+                bat "curl http://localhost:8761 || echo Eureka not ready"
             }
         }
     }
 
     post {
         success {
-            echo "====================================="
             echo "PIPELINE SUCCESS"
-            echo "====================================="
         }
 
         failure {
-            echo "====================================="
-            echo "PIPELINE FAILED"
-            echo "CHECK LOGS"
-            echo "====================================="
+            echo "PIPELINE FAILED - CHECK JAVA_HOME OR BUILD LOGS"
         }
     }
 }
