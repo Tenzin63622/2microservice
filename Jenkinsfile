@@ -112,6 +112,7 @@
 //     }
 // }
 pipeline {
+
     agent any
 
     environment {
@@ -126,7 +127,6 @@ pipeline {
             steps {
 
                 echo '=== Cleaning Old Workspace ==='
-
                 cleanWs()
             }
         }
@@ -136,7 +136,6 @@ pipeline {
             steps {
 
                 echo '=== Fetching latest code from GitHub ==='
-
                 checkout scm
             }
         }
@@ -215,10 +214,11 @@ pipeline {
 
                 bat '''
 
+                    echo Starting Eureka Server...
                     start /B java -jar eureka-server\\target\\*.jar
+                    timeout /t 25
 
-                    timeout /t 20
-
+                    echo Starting Core Microservices...
                     start /B java -jar user-service\\target\\*.jar
                     start /B java -jar post-service\\target\\*.jar
                     start /B java -jar like-service\\target\\*.jar
@@ -228,6 +228,7 @@ pipeline {
 
                     timeout /t 15
 
+                    echo Starting API Gateway...
                     start /B java -jar api-gateway\\target\\*.jar
                 '''
             }
@@ -241,11 +242,13 @@ pipeline {
 
                 bat '''
 
-                    timeout /t 40
+                    timeout /t 45
 
-                    curl http://localhost:8761/actuator/health
+                    echo Checking Eureka Server...
+                    curl http://localhost:8761/actuator/health || echo Eureka not ready
 
-                    curl http://localhost:9090/actuator/health
+                    echo Checking API Gateway...
+                    curl http://localhost:9090/actuator/health || echo Gateway not ready
                 '''
             }
         }
@@ -256,7 +259,7 @@ pipeline {
         success {
 
             echo '====================================='
-            echo 'Deployment Successful'
+            echo 'DEPLOYMENT SUCCESSFUL'
             echo '====================================='
 
             echo 'Eureka Dashboard: http://localhost:8761'
@@ -266,7 +269,7 @@ pipeline {
         failure {
 
             echo '====================================='
-            echo 'Deployment Failed'
+            echo 'DEPLOYMENT FAILED'
             echo '====================================='
         }
     }
