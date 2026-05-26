@@ -201,7 +201,6 @@ pipeline {
                     start /B java -jar comment-service\\target\\*.jar
                     start /B java -jar follow-service\\target\\*.jar
                     start /B java -jar search-service\\target\\*.jar
-                    start /B java -jar notification-service\\target\\*.jar
                     start /B java -jar api-gateway\\target\\*.jar
                 '''
             }
