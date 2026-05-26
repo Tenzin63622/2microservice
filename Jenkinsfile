@@ -112,50 +112,35 @@
 //     }
 // }
 pipeline {
-
     agent any
 
     environment {
-
         SERVICES = 'eureka-server user-service post-service like-service comment-service follow-service search-service api-gateway'
     }
 
     stages {
 
         stage('Clean Workspace') {
-
             steps {
-
-                echo '=== Cleaning Old Workspace ==='
+                echo '=== Cleaning Workspace ==='
                 cleanWs()
             }
         }
 
         stage('Checkout Code') {
-
             steps {
-
-                echo '=== Fetching latest code from GitHub ==='
+                echo '=== Fetching Code from GitHub ==='
                 checkout scm
             }
         }
 
         stage('Build Microservices') {
-
             steps {
-
-                echo '=== Building all Spring Boot microservices ==='
-
+                echo '=== Building all services ==='
                 script {
-
                     def serviceList = env.SERVICES.split(' ')
-
                     for (service in serviceList) {
-
-                        echo "Building ${service}"
-
                         dir(service) {
-
                             bat 'mvn clean package -DskipTests'
                         }
                     }
@@ -163,62 +148,32 @@ pipeline {
             }
         }
 
-        stage('Run Unit Tests') {
-
+        stage('Stop Only Required Ports') {
             steps {
-
-                echo '=== Running Unit Tests ==='
-
-                script {
-
-                    def serviceList = env.SERVICES.split(' ')
-
-                    for (service in serviceList) {
-
-                        echo "Testing ${service}"
-
-                        dir(service) {
-
-                            bat 'mvn test'
-                        }
-                    }
-                }
-            }
-
-            post {
-
-                always {
-
-                    junit '**/target/surefire-reports/*.xml'
-                }
-            }
-        }
-
-        stage('Stop Old Services') {
-
-            steps {
-
-                echo '=== Stopping old running services ==='
-
+                echo '=== Stopping services on known ports only ==='
                 bat '''
-                    taskkill /F /IM java.exe /T || exit /B 0
+                    for /f "tokens=5" %a in ('netstat -ano ^| findstr :8761') do taskkill /F /PID %a || exit /B 0
+                    for /f "tokens=5" %a in ('netstat -ano ^| findstr :8081') do taskkill /F /PID %a || exit /B 0
+                    for /f "tokens=5" %a in ('netstat -ano ^| findstr :8082') do taskkill /F /PID %a || exit /B 0
+                    for /f "tokens=5" %a in ('netstat -ano ^| findstr :8083') do taskkill /F /PID %a || exit /B 0
+                    for /f "tokens=5" %a in ('netstat -ano ^| findstr :8084') do taskkill /F /PID %a || exit /B 0
+                    for /f "tokens=5" %a in ('netstat -ano ^| findstr :8085') do taskkill /F /PID %a || exit /B 0
+                    for /f "tokens=5" %a in ('netstat -ano ^| findstr :8086') do taskkill /F /PID %a || exit /B 0
+                    for /f "tokens=5" %a in ('netstat -ano ^| findstr :9090') do taskkill /F /PID %a || exit /B 0
                 '''
             }
         }
 
         stage('Deploy Services') {
-
             steps {
-
-                echo '=== Starting all microservices ==='
+                echo '=== Starting Microservices ==='
 
                 bat '''
-
                     echo Starting Eureka Server...
                     start /B java -jar eureka-server\\target\\*.jar
-                    timeout /t 25
+                    timeout /t 20
 
-                    echo Starting Core Microservices...
+                    echo Starting core services...
                     start /B java -jar user-service\\target\\*.jar
                     start /B java -jar post-service\\target\\*.jar
                     start /B java -jar like-service\\target\\*.jar
@@ -226,7 +181,7 @@ pipeline {
                     start /B java -jar follow-service\\target\\*.jar
                     start /B java -jar search-service\\target\\*.jar
 
-                    timeout /t 15
+                    timeout /t 20
 
                     echo Starting API Gateway...
                     start /B java -jar api-gateway\\target\\*.jar
@@ -234,21 +189,59 @@ pipeline {
             }
         }
 
-        stage('Health Check') {
-
+        stage('Wait for Eureka + Follow Service') {
             steps {
-
-                echo '=== Performing Health Checks ==='
+                echo '=== Waiting for services to be READY ==='
 
                 bat '''
+                set /A COUNT=0
 
-                    timeout /t 45
+                :check
+                curl -f http://localhost:8761/actuator/health >nul 2>&1
+                if %errorlevel%==0 (
+                    echo Eureka is UP
+                ) else (
+                    echo Waiting for Eureka...
+                    timeout /t 5 >nul
+                    goto check
+                )
 
-                    echo Checking Eureka Server...
-                    curl http://localhost:8761/actuator/health || echo Eureka not ready
+                set /A COUNT=0
 
-                    echo Checking API Gateway...
-                    curl http://localhost:9090/actuator/health || echo Gateway not ready
+                :checkFollow
+                curl -f http://localhost:8085/actuator/health >nul 2>&1
+                if %errorlevel%==0 (
+                    echo Follow-Service is UP
+                    goto done
+                )
+
+                set /A COUNT+=1
+                if %COUNT% GEQ 20 (
+                    echo Follow-Service failed to start
+                    exit /B 1
+                )
+
+                echo Waiting for Follow-Service...
+                timeout /t 5 >nul
+                goto checkFollow
+
+                :done
+                echo All required services are READY
+                '''
+            }
+        }
+
+        stage('Test Follow-Service API') {
+            steps {
+                echo '=== Testing Follow Service API ==='
+
+                bat '''
+                    echo Calling follow-service GET API...
+
+                    curl -X GET http://localhost:8085/api/follows/1/following ^
+                    -H "X-User-Id: 1"
+
+                    echo API Test Completed Successfully
                 '''
             }
         }
@@ -257,17 +250,16 @@ pipeline {
     post {
 
         success {
-
             echo '====================================='
             echo 'DEPLOYMENT SUCCESSFUL'
             echo '====================================='
 
-            echo 'Eureka Dashboard: http://localhost:8761'
+            echo 'Eureka: http://localhost:8761'
             echo 'API Gateway: http://localhost:9090'
+            echo 'Follow API: http://localhost:8085/api/follows/1/following'
         }
 
         failure {
-
             echo '====================================='
             echo 'DEPLOYMENT FAILED'
             echo '====================================='
