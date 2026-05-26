@@ -1,11 +1,16 @@
 pipeline {
     agent any
 
+    environment {
+        JAVA_HOME = "C:\\Program Files\\Java\\jdk-17"
+        PATH = "${env.JAVA_HOME}\\bin;${env.PATH}"
+    }
+
     stages {
 
         stage('Checkout Code') {
             steps {
-                echo "=== Checkout Code ==="
+                echo "=== Checking out code ==="
                 checkout scm
             }
         }
@@ -26,7 +31,7 @@ pipeline {
                         "api-gateway"
                     ]
 
-                    services.each { service ->
+                    for (service in services) {
                         dir(service) {
                             bat "mvn clean package -DskipTests"
                         }
@@ -38,69 +43,78 @@ pipeline {
         stage('Start Services') {
             steps {
                 bat '''
-                    echo Starting Eureka Server...
-                    start java -jar eureka-server/target/*.jar
+                echo ===============================
+                echo Starting Microservices
+                echo ===============================
 
-                    timeout /t 10
+                echo Starting Eureka Server...
+                start "" java -jar eureka-server/target/eureka-server-0.0.1-SNAPSHOT.jar
 
-                    echo Starting User Service...
-                    start java -jar user-service/target/*.jar
+                ping 127.0.0.1 -n 8 > nul
 
-                    echo Starting Post Service...
-                    start java -jar post-service/target/*.jar
+                echo Starting User Service...
+                start "" java -jar user-service/target/user-service-0.0.1-SNAPSHOT.jar
 
-                    echo Starting Like Service...
-                    start java -jar like-service/target/*.jar
+                ping 127.0.0.1 -n 8 > nul
 
-                    echo Starting Comment Service...
-                    start java -jar comment-service/target/*.jar
+                echo Starting Post Service...
+                start "" java -jar post-service/target/post-service-0.0.1-SNAPSHOT.jar
 
-                    echo Starting Follow Service...
-                    start java -jar follow-service/target/*.jar
+                ping 127.0.0.1 -n 8 > nul
 
-                    echo Starting Search Service...
-                    start java -jar search-service/target/*.jar
+                echo Starting Like Service...
+                start "" java -jar like-service/target/like-service-0.0.1-SNAPSHOT.jar
 
-                    echo Starting API Gateway...
-                    start java -jar api-gateway/target/*.jar
+                ping 127.0.0.1 -n 8 > nul
+
+                echo Starting Comment Service...
+                start "" java -jar comment-service/target/comment-service-0.0.1-SNAPSHOT.jar
+
+                ping 127.0.0.1 -n 8 > nul
+
+                echo Starting Follow Service...
+                start "" java -jar follow-service/target/follow-service-0.0.1-SNAPSHOT.jar
+
+                ping 127.0.0.1 -n 8 > nul
+
+                echo Starting Search Service...
+                start "" java -jar search-service/target/search-service-0.0.1-SNAPSHOT.jar
+
+                ping 127.0.0.1 -n 8 > nul
+
+                echo Starting API Gateway...
+                start "" java -jar api-gateway/target/api-gateway-0.0.1-SNAPSHOT.jar
+
+                echo ===============================
+                echo ALL SERVICES STARTED
+                echo ===============================
                 '''
             }
         }
 
-        stage('Health Check + API Response') {
+        stage('Health Check') {
             steps {
                 bat '''
-                    echo ===============================
-                    echo WAITING FOR SERVICES TO START
-                    echo ===============================
+                echo Checking services...
 
-                    timeout /t 20
+                curl http://localhost:8761 || echo Eureka not ready yet
+                curl http://localhost:8081 || echo User service not ready
+                curl http://localhost:8082 || echo Post service not ready
+                curl http://localhost:8083 || echo Like service not ready
+                curl http://localhost:8084 || echo Comment service not ready
+                curl http://localhost:8085 || echo Follow service not ready
+                curl http://localhost:8086 || echo Search service not ready
+                curl http://localhost:8080 || echo Gateway not ready
+                '''
+            }
+        }
 
-                    echo ===============================
-                    echo CHECKING FOLLOW SERVICE HEALTH
-                    echo ===============================
+        stage('API Test (Follow Service)') {
+            steps {
+                bat '''
+                echo Testing Follow API...
 
-                    :retry
-                    curl -s http://localhost:8085/actuator/health
-                    IF %ERRORLEVEL% NEQ 0 (
-                        echo Service not ready... retrying in 5 seconds
-                        timeout /t 5
-                        goto retry
-                    )
-
-                    echo ===============================
-                    echo SERVICE IS UP
-                    echo ===============================
-
-                    echo ===============================
-                    echo CALLING FOLLOWERS API
-                    echo ===============================
-
-                    curl http://localhost:8085/api/follows/1/followers
-
-                    echo ===============================
-                    echo PIPELINE SUCCESS
-                    echo ===============================
+                curl http://localhost:8085/api/follows/1/followers
                 '''
             }
         }
@@ -108,11 +122,10 @@ pipeline {
 
     post {
         success {
-            echo "PIPELINE SUCCESS - ALL SERVICES RUNNING"
+            echo "PIPELINE SUCCESS - ALL MICROSERVICES RUNNING"
         }
-
         failure {
-            echo "PIPELINE FAILED - CHECK LOGS / JAVA_HOME / SERVICE STARTUP"
+            echo "PIPELINE FAILED - CHECK LOGS"
         }
     }
 }
