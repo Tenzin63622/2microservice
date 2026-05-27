@@ -1,12 +1,6 @@
 pipeline {
 
     agent any
-
-    tools {
-        maven 'Maven3'
-        jdk 'JDK17'
-    }
-
     environment {
         FOLLOW_URL = "http://localhost:8085/api/follows/1/followers"
         FOLLOW_PORT = "8085"
